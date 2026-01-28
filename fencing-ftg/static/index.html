@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fencing FTG (Épée)</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #222;
+            color: #eee;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+
+        #game-container {
+            position: relative;
+            border: 2px solid #555;
+            background-color: #333;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #ui {
+            display: flex;
+            justify-content: space-between;
+            width: 800px;
+            margin-bottom: 10px;
+            font-size: 1.2em;
+        }
+
+        .score {
+            font-size: 2em;
+            font-weight: bold;
+        }
+
+        .controls {
+            margin-top: 20px;
+            text-align: center;
+            color: #aaa;
+        }
+
+        .key {
+            display: inline-block;
+            padding: 5px 10px;
+            border: 1px solid #777;
+            border-radius: 4px;
+            margin: 0 5px;
+            background: #444;
+        }
+
+        #status {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 1.5em;
+            color: #ffd700;
+            text-shadow: 1px 1px 2px black;
+            pointer-events: none;
+        }
+
+        #debug {
+            margin-top: 10px;
+            font-size: 0.8em;
+            color: #888;
+            font-family: monospace;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="ui">
+        <div>Player 1 (Left)<br><span id="score1" class="score">0</span></div>
+        <div>
+            <div id="mode-select">
+                <button onclick="setMode('PVP')">PvP</button>
+                <button onclick="setMode('PVE')">vs AI</button>
+            </div>
+            <div id="current-mode" style="font-size:0.5em">Current: PvP</div>
+        </div>
+        <div>Player 2 (Right)<br><span id="score2" class="score">0</span></div>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="800" height="400"></canvas>
+        <div id="status">Waiting for connection...</div>
+        <div id="game-over-overlay"
+            style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); flex-direction: column; justify-content: center; align-items: center; z-index: 10;">
+            <h1 id="winner-text" style="color: white; font-size: 3em;">Winner!</h1>
+            <button onclick="restartGame()"
+                style="padding: 10px 20px; font-size: 1.5em; cursor: pointer; background: #4facfe; border: none; color: white; border-radius: 5px;">Play
+                Again</button>
+        </div>
+    </div>
+
+    <div class="controls">
+        <p>Controls:</p>
+        <div><span class="key">←</span> <span class="key">→</span> Move</div>
+        <div><span class="key">Z</span> Thrust | <span class="key">X</span> Lunge</div>
+    </div>
+
+    <div id="debug"></div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const statusEl = document.getElementById('status');
+        const score1El = document.getElementById('score1');
+        const score2El = document.getElementById('score2');
+        const debugEl = document.getElementById('debug');
+
+        let ws = null;
+        let gameState = null;
+        const P1_COLOR = '#4facfe'; // Cyan/Blue
+        const P2_COLOR = '#ff6b6b'; // Red
+        const SCALE = 50; // px per meter (Arena 14m -> 700px)
+        const OFFSET_X = 50; // Padding
+        const FLOOR_Y = 300;
+
+        function connect() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+
+            ws.onopen = () => {
+                statusEl.textContent = 'Connected!';
+                statusEl.style.opacity = '0'; // Hide after connect
+            };
+
+            ws.onmessage = (event) => {
+                gameState = JSON.parse(event.data);
+                render();
+                updateUI();
+            };
+
+            ws.onclose = () => {
+                statusEl.textContent = 'Disconnected. Reconnecting...';
+                statusEl.style.opacity = '1';
+                setTimeout(connect, 2000);
+            };
+        }
+
+        // Input Handling
+        const activeKeys = new Set();
+
+        window.addEventListener('keydown', (e) => {
+            if (e.repeat) return;
+            activeKeys.add(e.code);
+            sendAction();
+        });
+
+        window.addEventListener('keyup', (e) => {
+            activeKeys.delete(e.code);
+            sendAction(); // Send idle or new state
+        });
+
+        function sendAction() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+            let action = 'IDLE';
+
+            // Priority: Lunge > Thrust > Move
+            if (activeKeys.has('KeyX')) action = 'LUNGE';
+            else if (activeKeys.has('KeyZ')) action = 'THRUST';
+            else if (activeKeys.has('ArrowRight')) action = 'STEP_FORWARD'; // Context dependent in Engine? No, mapping is absolute for P1
+            else if (activeKeys.has('ArrowLeft')) action = 'STEP_BACK';
+
+            // For P1 (Left), Right is Forward (Increasing X).
+            // NOTE: The engine expects action types.
+            // If we are P2, the inputs should be mirrored visually, but logic-wise:
+            // P2 Forward = Moving Left (Decreasing X).
+            // Input mapping:
+            // To simplify, let's make ArrowRight always +X, ArrowLeft always -X.
+            // But Engine Actions are "STEP_FORWARD" / "STEP_BACK".
+            // Engine: P1 Forward = +X, P2 Forward = -X.
+
+            // Re-mapping for simple local play testing (controlling P1 usually):
+            // We blindly send keys for now. 
+            // Better: 'STEP_FORWARD' means approach opponent.
+
+            // Let's assume we are controlling Player 1 for this prototype.
+            // If ArrowRight -> P1 moves Forward (+X) -> STEP_FORWARD
+            // If ArrowLeft -> P1 moves Back (-X) -> STEP_BACK
+
+            if (activeKeys.has('ArrowRight')) action = 'STEP_FORWARD';
+            if (activeKeys.has('ArrowLeft')) action = 'STEP_BACK';
+
+            ws.send(JSON.stringify({ action: action }));
+        }
+
+        function setMode(mode) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) return;
+            ws.send(JSON.stringify({ action: "SET_MODE", value: mode }));
+            document.getElementById('current-mode').textContent = "Current: " + mode;
+            // Reset focus so keys work for game
+            canvas.focus();
+        }
+
+        function restartGame() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) return;
+            ws.send(JSON.stringify({ action: "RESTART" }));
+            document.getElementById('game-over-overlay').style.display = 'none';
+            canvas.focus();
+        }
+
+        function render() {
+            if (!gameState) return;
+
+            // Check Game Over
+            const overlay = document.getElementById('game-over-overlay');
+            if (gameState.game_over) {
+                const winnerText = document.getElementById('winner-text');
+                if (gameState.winner === 0) {
+                    winnerText.textContent = "Player 1 Wins!";
+                    winnerText.style.color = P1_COLOR;
+                } else if (gameState.winner === 1) {
+                    winnerText.textContent = "Player 2 Wins!";
+                    winnerText.style.color = P2_COLOR;
+                } else {
+                    winnerText.textContent = "Draw!";
+                    winnerText.style.color = "#fff";
+                }
+                overlay.style.display = 'flex';
+            } else {
+                overlay.style.display = 'none';
+            }
+
+            // Clear
+            ctx.fillStyle = '#333';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Floor
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(OFFSET_X, FLOOR_Y);
+            ctx.lineTo(canvas.width - OFFSET_X, FLOOR_Y);
+            ctx.stroke();
+
+            // Markers (Center, 2m lines)
+            drawMarker(7.0, '#888', 10); // Center
+            drawMarker(5.0, '#555', 5); // En garde lines
+            drawMarker(9.0, '#555', 5);
+
+            // Fencers
+            const p1 = gameState.fencers[0];
+            const p2 = gameState.fencers[1];
+
+            drawFencer(p1, P1_COLOR, true);
+            drawFencer(p2, P2_COLOR, false);
+
+            // Distance (Visual Guide)
+            ctx.fillStyle = '#aaa';
+            ctx.textAlign = 'center';
+            ctx.font = '14px monospace';
+            ctx.fillText(`Dist: ${gameState.distance.toFixed(2)}m`, canvas.width / 2, 50);
+
+            // Last Event
+            if (gameState.last_event) {
+                statusEl.textContent = gameState.last_event;
+                statusEl.style.opacity = '1';
+                setTimeout(() => statusEl.style.opacity = '0', 1000);
+            }
+        }
+
+        function drawMarker(meters, color, height) {
+            const x = OFFSET_X + meters * SCALE;
+            ctx.strokeStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(x, FLOOR_Y);
+            ctx.lineTo(x, FLOOR_Y - height);
+            ctx.stroke();
+        }
+
+        function drawFencer(fencer, color, isLeft) {
+            const x = OFFSET_X + fencer.position * SCALE;
+            const y = FLOOR_Y;
+            const height = 80;
+            const width = 20;
+
+            // Body
+            ctx.fillStyle = color;
+            ctx.fillRect(x - width / 2, y - height, width, height);
+
+            // Debug: Reach/Weapon
+            // Only draw if attacking
+            if (fencer.state.includes('ATTACK')) {
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(x, y - height * 0.7);
+                const dir = isLeft ? 1 : -1;
+                ctx.lineTo(x + (fencer.reach * SCALE * dir), y - height * 0.7);
+                ctx.stroke();
+            }
+
+            // State Label
+            ctx.fillStyle = '#fff';
+            ctx.font = '10px sans-serif';
+            ctx.fillText(fencer.state, x, y - height - 10);
+        }
+
+        function updateUI() {
+            if (!gameState) return;
+            score1El.textContent = gameState.fencers[0].score;
+            score2El.textContent = gameState.fencers[1].score;
+
+            // Debug info
+            debugEl.innerHTML = `Tick: ${gameState.tick_count} | P1 Last: ${gameState.fencers[0].last_action}`;
+        }
+
+        connect();
+    </script>
+</body>
+
+</html>
