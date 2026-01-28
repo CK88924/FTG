@@ -57,6 +57,19 @@ This is not a combo-based fighting game, but a game about **Spacing** and **Timi
     *   AI automatically maintains distance and attempts attacks.
     *   **Note**: Since Épée Fencing involves linear (1D) movement, the AI trains very effectively and can become a strong opponent quickly.
 
+### 🧠 AI Training (Reinforcement Learning)
+
+If you want to train your own "Smart AI", you can run the training script:
+
+```bash
+# Train for 10,000 steps (default)
+python train_rl.py
+```
+
+*   The trained model will be saved to `app/models/ppo_fencing.zip`.
+*   The game server will **automatically load** this model if it exists.
+*   The AI includes a simulated **Reaction Delay** (default ~250ms) to make it fair.
+
 ## ⚔️ Mechanics
 
 *   **Distance Model**:
@@ -143,6 +156,19 @@ fencing-ftg/
     *   Player 2 由電腦 AI 自動控制。
     *   AI 會根據距離自動前後移動並嘗試攻擊。
     *   **備註**：由於西洋劍是直線（1D）運動，AI 訓練效率極高，能夠很快學會強大的距離控制與攻擊決策。
+
+### 🧠 AI 訓練 (Reinforcement Learning)
+
+如果您想要訓練各強大的「智慧 AI」，可以執行訓練腳本：
+
+```bash
+# 執行訓練 (預設 10,000 步)
+python train_rl.py
+```
+
+*   訓練完成後，模型會自動儲存至 `app/models/ppo_fencing.zip`。
+*   遊戲伺服器啟動時，若發現此檔案存在，會 **自動載入模型**。
+*   為了公平起見，AI 內建了模擬的 **反應延遲 (Reaction Delay)** (約 250ms)。
 
 ## ⚔️ 判定機制 (Mechanics)
 
