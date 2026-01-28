@@ -2,3 +2,7 @@ fastapi
 uvicorn
 websockets
 pydantic
+gymnasium
+numpy
+stable-baselines3
+shimmy

@@ -3,13 +3,22 @@ from typing import Dict
 from .engine import GameEngine
 from .models import ActionType, GameMode
 from .ai import SimpleAI
+from .trained_ai import TrainedAI
 
 class GameService:
     def __init__(self):
         self.engine = GameEngine()
         self.inputs: Dict[int, ActionType] = {}
         self.running = False
-        self.ai = SimpleAI(player_id=1) # AI controls Player 2
+        
+        # Try to load TrainedAI, fall back to SimpleAI
+        print("Checking for Trained AI...")
+        self.ai = TrainedAI()
+        if not self.ai.model:
+            print("Using SimpleAI (Rule-based)")
+            self.ai = SimpleAI(player_id=1)
+        else:
+            print("Using TrainedAI (PPO)")
         
     def set_player_action(self, player_id: int, action: ActionType):
         self.inputs[player_id] = action
@@ -27,7 +36,11 @@ class GameService:
             
             # AI Logic (Only if PVE)
             if self.engine.config.mode == GameMode.PVE:
-                p2_action = self.ai.decide(self.engine.state)
+                if isinstance(self.ai, SimpleAI):
+                    p2_action = self.ai.decide(self.engine.state)
+                else:
+                    # TrainedAI uses process(engine, my_index, op_index)
+                    p2_action = self.ai.process(self.engine, 1, 0)
             
             current_actions = {
                 0: p1_action,

@@ -55,6 +55,7 @@ This is not a combo-based fighting game, but a game about **Spacing** and **Timi
     *   Single-player mode.
     *   Player 2 is controlled by a simple AI.
     *   AI automatically maintains distance and attempts attacks.
+    *   **Note**: Since Épée Fencing involves linear (1D) movement, the AI trains very effectively and can become a strong opponent quickly.
 
 ## ⚔️ Mechanics
 
@@ -141,6 +142,7 @@ fencing-ftg/
     *   單人模式。
     *   Player 2 由電腦 AI 自動控制。
     *   AI 會根據距離自動前後移動並嘗試攻擊。
+    *   **備註**：由於西洋劍是直線（1D）運動，AI 訓練效率極高，能夠很快學會強大的距離控制與攻擊決策。
 
 ## ⚔️ 判定機制 (Mechanics)
 
