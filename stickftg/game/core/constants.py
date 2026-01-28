@@ -1,0 +1,14 @@
+FPS = 60
+DT = 1.0 / FPS
+
+SCREEN_W = 960
+SCREEN_H = 540
+
+GROUND_Y = 420
+
+GRAVITY = 2400.0           # px/s^2
+MOVE_SPEED = 340.0         # px/s
+JUMP_VELOCITY = -900.0     # px/s
+
+MAX_HP = 100
+ROUND_TIME_SEC = 60
